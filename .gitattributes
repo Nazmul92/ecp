@@ -1,0 +1,12 @@
+# CI runs on ubuntu-latest and windows-latest; normalize line endings in the
+# repo so the adversarial test suite and the SVG figures compare byte-identically
+# on both. Working copies still get native endings.
+* text=auto
+
+*.py    text diff=python
+*.md    text
+*.toml  text
+*.yml   text
+*.json  text
+*.svg   text
+*.html  text

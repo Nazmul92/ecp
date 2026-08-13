@@ -1,0 +1,90 @@
+name: ci
+
+# The release gate. Both commands below are pass/fail on their own:
+#   tests/test_ecp.py       exits non-zero on any failing adversarial case
+#   benchmark/harness.py    exits non-zero on any IN-SCOPE miss (the Tier-2
+#                           residual is reported but does not fail the build,
+#                           because catching it is explicitly out of the
+#                           deterministic guarantee's scope)
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Install from the package metadata, so a broken pyproject fails here
+      # rather than for the first person who runs `pip install`.
+      - name: Install
+        run: python -m pip install -e .
+
+      - name: Version metadata is single-sourced
+        run: |
+          python -c "import ecp, ecp.version; assert ecp.__version__ == ecp.version.__version__"
+          python -c "import ecp; s=ecp.EvidenceStore(); e=s.add_value('x',1,source_tool='t'); assert e.to_dict()['ecp_version']==ecp.__version__, 'evidence version drifted from package version'"
+
+      - name: Adversarial test suite
+        run: python tests/test_ecp.py
+
+      - name: Verifier benchmark (in-scope misses fail the build)
+        run: python benchmark/harness.py
+
+      # Windows is where audit locking degrades to single-writer, so the
+      # offline examples run on both platforms to keep that path exercised.
+      - name: Offline examples
+        run: |
+          python examples/01_sales_agent_demo.py
+          python examples/02_arm_comparison.py
+          python examples/05_tier2_backend.py
+          python examples/06_integration.py
+
+      # Figures are derived from the corpus and the arm record, so a change to
+      # either must regenerate them. figures.py self-checks its own geometry
+      # (elements outside the canvas raise), which is what catches clipped
+      # captions that a human would only notice by opening the SVG.
+      - name: Figures regenerate cleanly
+        run: python benchmark/figures.py
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ruff
+      - run: ruff check ecp/ benchmark/ tests/ examples/
+
+  # Verify the distribution actually builds and the built wheel imports, in a
+  # clean environment. Doing this only before a release is how a broken
+  # pyproject reaches PyPI.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - name: Installed wheel imports and reports the right version
+        run: |
+          python -m pip install dist/*.whl
+          cd "$(mktemp -d)"   # leave the source tree so the import is the wheel
+          python -c "import ecp; print(ecp.__version__); assert ecp.__version__ == '0.4.1'"
+          python -c "import ecp, pathlib; assert (pathlib.Path(ecp.__file__).parent / 'py.typed').exists()"

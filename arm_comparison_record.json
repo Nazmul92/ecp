@@ -1,0 +1,476 @@
+{
+ "question": "How did sales perform in Q2 and why?",
+ "evidence": [
+  {
+   "evidence_id": "E-001",
+   "kind": "value",
+   "label": "Q1 unit sales",
+   "value": 114,
+   "unit": "units",
+   "source": {
+    "tool": "sales_db",
+    "call_id": "",
+    "ref": "",
+    "retrieved_at": "2026-08-13T01:38:11+00:00"
+   },
+   "evidence_type": "database_result",
+   "confidence": 1.0,
+   "supports_causality": false,
+   "ecp_version": "0.4.1"
+  },
+  {
+   "evidence_id": "E-002",
+   "kind": "value",
+   "label": "Q2 unit sales",
+   "value": 100,
+   "unit": "units",
+   "source": {
+    "tool": "sales_db",
+    "call_id": "",
+    "ref": "",
+    "retrieved_at": "2026-08-13T01:38:11+00:00"
+   },
+   "evidence_type": "database_result",
+   "confidence": 1.0,
+   "supports_causality": false,
+   "ecp_version": "0.4.1"
+  },
+  {
+   "evidence_id": "E-003",
+   "kind": "text",
+   "label": "Customer survey (n unknown): several respondents mentioned p...",
+   "value": "Customer survey (n unknown): several respondents mentioned pricing concerns.",
+   "unit": null,
+   "source": {
+    "tool": "survey_tool",
+    "call_id": "",
+    "ref": "",
+    "retrieved_at": "2026-08-13T01:38:11+00:00"
+   },
+   "evidence_type": "document_chunk",
+   "confidence": 1.0,
+   "supports_causality": false,
+   "ecp_version": "0.4.1"
+  }
+ ],
+ "arm_a": {
+  "prose": "Q2 sales came in at 100 units, down about 14% from Q1 \u2014 a steeper decline than the roughly 10% the team had forecast. The drop was driven primarily by pricing concerns, which cost the company around 20 accounts. Surveys confirm pricing was cited by a majority of respondents. Dips this size recover within 2 quarters; Q4 should return to the 114-unit level.",
+  "scored": [
+   {
+    "fragment": "Q2 sales came in at 100 units,",
+    "claim": {
+     "claim_id": "A1",
+     "claim_type": "finding",
+     "text": "Q2 sales were 100 units.",
+     "cites": [
+      "E-002"
+     ],
+     "asserted_values": [
+      {
+       "value": 100,
+       "unit": "units",
+       "from": "E-002"
+      }
+     ],
+     "causal": false,
+     "hedge_level": "none"
+    },
+    "status": "ok",
+    "verifier": {
+     "claim_id": "A1",
+     "status": "verified",
+     "tier_results": [
+      {
+       "tier": "structural",
+       "pass": true,
+       "reason": ""
+      },
+      {
+       "tier": "value",
+       "pass": true,
+       "reason": ""
+      },
+      {
+       "tier": "causal_gate",
+       "pass": true,
+       "reason": ""
+      }
+     ],
+     "repairable": true,
+     "repair_hint": "",
+     "downgraded_to": null
+    }
+   },
+   {
+    "fragment": "down about 14% from Q1 \u2014",
+    "claim": {
+     "claim_id": "A2",
+     "claim_type": "finding",
+     "text": "Sales fell about 14% from Q1.",
+     "cites": [
+      "C-001"
+     ],
+     "asserted_values": [],
+     "causal": false,
+     "hedge_level": "none"
+    },
+    "status": "bad",
+    "verifier": {
+     "claim_id": "A2",
+     "status": "rejected",
+     "tier_results": [
+      {
+       "tier": "structural",
+       "pass": true,
+       "reason": ""
+      },
+      {
+       "tier": "value",
+       "pass": false,
+       "reason": "number 14.0% in text is not bound to any asserted_value with unit %; declare it in asserted_values with its source ref"
+      }
+     ],
+     "repairable": true,
+     "repair_hint": "number 14.0% in text is not bound to any asserted_value with unit %; declare it in asserted_values with its source ref. Use only values present in the evidence table, or request a calculation.",
+     "downgraded_to": null
+    }
+   },
+   {
+    "fragment": "a steeper decline than the roughly 10% the team had forecast.",
+    "claim": {
+     "claim_id": "A3",
+     "claim_type": "finding",
+     "text": "The team forecast a roughly 10% decline.",
+     "cites": [],
+     "asserted_values": [],
+     "causal": false,
+     "hedge_level": "none"
+    },
+    "status": "bad",
+    "verifier": {
+     "claim_id": "A3",
+     "status": "rejected",
+     "tier_results": [
+      {
+       "tier": "structural",
+       "pass": false,
+       "reason": "'finding' claims require at least one citation"
+      }
+     ],
+     "repairable": true,
+     "repair_hint": "'finding' claims require at least one citation",
+     "downgraded_to": null
+    }
+   },
+   {
+    "fragment": "The drop was driven primarily by pricing concerns,",
+    "claim": {
+     "claim_id": "A4",
+     "claim_type": "observation",
+     "text": "The drop was driven primarily by pricing concerns.",
+     "cites": [
+      "E-003"
+     ],
+     "asserted_values": [],
+     "causal": false,
+     "hedge_level": "none"
+    },
+    "status": "bad",
+    "verifier": {
+     "claim_id": "A4",
+     "status": "rejected",
+     "tier_results": [
+      {
+       "tier": "structural",
+       "pass": true,
+       "reason": ""
+      },
+      {
+       "tier": "value",
+       "pass": true,
+       "reason": ""
+      },
+      {
+       "tier": "causal_gate",
+       "pass": false,
+       "reason": "causal language ('driven primarily by') in a non-causal claim"
+      }
+     ],
+     "repairable": true,
+     "repair_hint": "causal language ('driven primarily by') in a non-causal claim. Restate as an observation or inference, or drop the causal framing.",
+     "downgraded_to": null
+    }
+   },
+   {
+    "fragment": "which cost the company around 20 accounts.",
+    "claim": {
+     "claim_id": "A5",
+     "claim_type": "finding",
+     "text": "Pricing cost around 20 accounts.",
+     "cites": [
+      "E-003"
+     ],
+     "asserted_values": [],
+     "causal": false,
+     "hedge_level": "none"
+    },
+    "status": "bad",
+    "verifier": {
+     "claim_id": "A5",
+     "status": "rejected",
+     "tier_results": [
+      {
+       "tier": "structural",
+       "pass": true,
+       "reason": ""
+      },
+      {
+       "tier": "value",
+       "pass": false,
+       "reason": "number 20.0 in text is not bound to any asserted_value; declare it in asserted_values with its source ref"
+      }
+     ],
+     "repairable": true,
+     "repair_hint": "number 20.0 in text is not bound to any asserted_value; declare it in asserted_values with its source ref. Use only values present in the evidence table, or request a calculation.",
+     "downgraded_to": null
+    }
+   },
+   {
+    "fragment": "Surveys confirm pricing was cited by a majority of respondents.",
+    "claim": {
+     "claim_id": "A6",
+     "claim_type": "observation",
+     "text": "A majority of respondents cited pricing.",
+     "cites": [
+      "E-003"
+     ],
+     "asserted_values": [],
+     "causal": false,
+     "hedge_level": "none"
+    },
+    "status": "tier2",
+    "verifier": {
+     "claim_id": "A6",
+     "status": "verified",
+     "tier_results": [
+      {
+       "tier": "structural",
+       "pass": true,
+       "reason": ""
+      },
+      {
+       "tier": "value",
+       "pass": true,
+       "reason": ""
+      },
+      {
+       "tier": "causal_gate",
+       "pass": true,
+       "reason": ""
+      }
+     ],
+     "repairable": true,
+     "repair_hint": "",
+     "downgraded_to": null
+    }
+   },
+   {
+    "fragment": "Dips this size recover within 2 quarters; Q4 should return to 114 units.",
+    "claim": {
+     "claim_id": "A7",
+     "claim_type": "finding",
+     "text": "Recovery to 114 units within 2 quarters.",
+     "cites": [
+      "E-001"
+     ],
+     "asserted_values": [
+      {
+       "value": 114,
+       "unit": "units",
+       "from": "E-001"
+      }
+     ],
+     "causal": false,
+     "hedge_level": "none"
+    },
+    "status": "bad",
+    "verifier": {
+     "claim_id": "A7",
+     "status": "rejected",
+     "tier_results": [
+      {
+       "tier": "structural",
+       "pass": true,
+       "reason": ""
+      },
+      {
+       "tier": "value",
+       "pass": false,
+       "reason": "number 2.0 in text is not bound to any asserted_value; declare it in asserted_values with its source ref"
+      }
+     ],
+     "repairable": true,
+     "repair_hint": "number 2.0 in text is not bound to any asserted_value; declare it in asserted_values with its source ref. Use only values present in the evidence table, or request a calculation.",
+     "downgraded_to": null
+    }
+   }
+  ],
+  "summary": "1 grounded \u00b7 5 deterministically rejected \u00b7 1 semantic residual (6 of 7 unsupported overall)"
+ },
+ "arm_b": {
+  "text": "Q2 sales were 100 units, down from 114 units in Q1. Sales declined 12.28% quarter over quarter. Several survey respondents mentioned pricing concerns. One plausible reading is that pricing concerns may be related to the decline. The evidence does not establish the cause of the decline, the number of affected accounts, or any forecast.",
+  "proof": {
+   "answer_id": "A-1208d28a1633",
+   "ts": "2026-08-13T01:38:11+00:00",
+   "ecp_version": "0.4.1",
+   "question": "How did sales perform in Q2 and why?",
+   "rendered_text": "Q2 sales were 100 units, down from 114 units in Q1. Sales declined 12.28% quarter over quarter. Several survey respondents mentioned pricing concerns. One plausible reading is that pricing concerns may be related to the decline. The evidence does not establish the cause of the decline, the number of affected accounts, or any forecast.",
+   "render_mode": "deterministic",
+   "prose_is_verbatim_claims": true,
+   "sentences": [
+    {
+     "text": "Q2 sales were 100 units, down from 114 units in Q1.",
+     "claim_id": "S-001",
+     "cites": [
+      "E-001",
+      "E-002"
+     ],
+     "type": "finding",
+     "verification_level": "numerically_grounded"
+    },
+    {
+     "text": "Sales declined 12.28% quarter over quarter.",
+     "claim_id": "S-002",
+     "cites": [
+      "C-001"
+     ],
+     "type": "comparison",
+     "verification_level": "numerically_grounded"
+    },
+    {
+     "text": "Several survey respondents mentioned pricing concerns.",
+     "claim_id": "S-003",
+     "cites": [
+      "E-003"
+     ],
+     "type": "observation",
+     "verification_level": "citation_resolved"
+    },
+    {
+     "text": "pricing concerns may be related to the decline",
+     "claim_id": "S-004",
+     "cites": [
+      "E-003",
+      "C-001"
+     ],
+     "type": "inference",
+     "verification_level": "interpretive"
+    },
+    {
+     "text": "The evidence does not establish the cause of the decline, the number of affected accounts, or any forecast.",
+     "claim_id": "S-005",
+     "cites": [],
+     "type": "gap",
+     "verification_level": "interpretive"
+    }
+   ],
+   "rejected_claims": [],
+   "evidence_manifest": [
+    "E-001",
+    "E-002",
+    "E-003",
+    "C-001"
+   ],
+   "evidence_stats": {
+    "total": 3,
+    "included": 3,
+    "omitted": 0,
+    "truncated": false,
+    "chars": 290
+   },
+   "evidence_snapshot": [
+    {
+     "evidence_id": "E-001",
+     "kind": "value",
+     "label": "Q1 unit sales",
+     "value": 114,
+     "unit": "units",
+     "source": {
+      "tool": "sales_db",
+      "call_id": "",
+      "ref": "",
+      "retrieved_at": "2026-08-13T01:38:11+00:00"
+     },
+     "evidence_type": "database_result",
+     "confidence": 1.0,
+     "supports_causality": false,
+     "ecp_version": "0.4.1"
+    },
+    {
+     "evidence_id": "E-002",
+     "kind": "value",
+     "label": "Q2 unit sales",
+     "value": 100,
+     "unit": "units",
+     "source": {
+      "tool": "sales_db",
+      "call_id": "",
+      "ref": "",
+      "retrieved_at": "2026-08-13T01:38:11+00:00"
+     },
+     "evidence_type": "database_result",
+     "confidence": 1.0,
+     "supports_causality": false,
+     "ecp_version": "0.4.1"
+    },
+    {
+     "evidence_id": "E-003",
+     "kind": "text",
+     "label": "Customer survey (n unknown): several respondents mentioned p...",
+     "value": "Customer survey (n unknown): several respondents mentioned pricing concerns.",
+     "unit": null,
+     "source": {
+      "tool": "survey_tool",
+      "call_id": "",
+      "ref": "",
+      "retrieved_at": "2026-08-13T01:38:11+00:00"
+     },
+     "evidence_type": "document_chunk",
+     "confidence": 1.0,
+     "supports_causality": false,
+     "ecp_version": "0.4.1"
+    }
+   ],
+   "calc_snapshot": [
+    {
+     "calc_id": "C-001",
+     "operation": "pct_change",
+     "inputs": [
+      "E-001",
+      "E-002"
+     ],
+     "result": -12.280702,
+     "unit": "%",
+     "expression": "pct_change(E-001, E-002)",
+     "computed_by": "ecp.calc",
+     "recomputable": true
+    }
+   ],
+   "evidence_hash": "82192f92682806bf1b0d5efdf5b7b72d411c6b4bbfadb1520d562bb70b9e3661",
+   "verifier_config_hash": "88c76440c5a2",
+   "repair_iterations": 0
+  },
+  "metrics": {
+   "claims_final": 5,
+   "claims_rejected": 0,
+   "claims_downgraded": 0,
+   "repair_iterations": 0,
+   "llm_errors": 0,
+   "rejection_rate": 0.0,
+   "evidence_total": 3,
+   "evidence_shown": 3,
+   "evidence_truncated": false
+  }
+ },
+ "note": "Arm A is constructed to be representative; scoring is mechanical. This is an illustration of verifier discrimination, not an end-to-end benchmark: that requires live models, repeated runs, independent labels, and completeness/latency/cost measurement."
+}
