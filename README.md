@@ -1,92 +1,106 @@
 # ECP — a post-tool verification runtime for agentic systems
 
-Your agent's tool results are real. Its final answer may not be. ECP sits between
-tool execution and answer generation: the LLM writes **structured claims**, a
-deterministic verifier checks them against an **evidence store**, failed claims
-are repaired or dropped (**fail-closed**), and the answer ships with a
-machine-readable **proof object**.
+**Your agent's tool results are real. Its final answer may not be.**
 
-MCP gets data into your agent. ECP makes sure the final answer only contains
-claims your evidence actually supports.
+ECP sits between tool execution and answer generation: the model writes
+**structured claims**, a deterministic verifier checks them against an
+**evidence store**, failed claims are repaired or dropped (**fail-closed**), and
+the answer ships with a machine-readable **proof object**.
+
+Stdlib-only, no dependencies, works with any model and any agent framework.
+
+## The problem
+
+Tool calling is solved. Answer generation is not.
+
+Your agent queries the sales database and gets back `q1: 114, q2: 100`. Both
+numbers are real. Then the model turns them into prose — and somewhere in that
+step `-12.28%` becomes "down roughly 14%", and "sales fell" quietly acquires a
+"because customers moved to competitors" that no tool ever returned.
+
+The retrieval was correct. The answer is not. Nothing in the stack noticed.
+
+That last step is the least defended part of a modern agent. Better retrieval,
+better tool design and better prompts all improve the **input** to answer
+generation. None of them check the **output**.
+
+## Why the usual answers don't close it
+
+| Approach | Why it falls short |
+|---|---|
+| Prompt it harder — *"only use the data provided"* | Prompts shape tendencies, not guarantees. The failure is rare enough to pass review and frequent enough to matter. |
+| Give the model more context | More raw numbers in context is more material to blend. Recall isn't the problem; unchecked synthesis is. |
+| Have a second model check the first | Probabilistic checking of a probabilistic process. It catches some errors, explains none of them, and leaves nothing an auditor can read. |
+| MCP | MCP gets data *into* your agent. It says nothing about what the model does with that data afterwards. |
+
+Each of these is worth doing. None of them can tell you, afterwards, whether a
+specific sentence was supported.
+
+## How ECP closes it
+
+One architectural rule does most of the work:
+
+> **The synthesis model never sees raw tool output.** It sees an evidence table,
+> and the only thing it may produce is claims that cite that table.
+
+If a fact isn't in the store, the model cannot cite it — and an uncited factual
+claim does not survive verification. Deterministic code owns the loop; the model
+is a constrained subroutine invoked at exactly two points.
 
 ```
 tool results → EvidenceStore → CalcRegistry → structured claims
              → tiered verification → repair loop → renderer → answer + proof
 ```
 
-## Guarantees
+1. **Ingest.** Tool results become evidence objects carrying a label, a unit, and
+   the exact query that produced them.
+2. **Compute.** The model never does arithmetic. It *requests* a calculation;
+   code executes it, and the result becomes citable evidence that is recomputed
+   before the answer ships.
+3. **Synthesize.** The model returns structured claims — text plus citations
+   plus the specific values it asserts — not prose.
+4. **Verify.** Tiered checks. Tiers 0 and 1 and the causal gate are pure code
+   with no model in them.
+5. **Repair.** Rejected claims go back with machine-generated hints while passing
+   claims stay frozen. This is fail-closed: the worst case is a shorter, blunter
+   answer, never a fabricated one.
+6. **Render and prove.** The answer ships with a proof object mapping every
+   sentence to the evidence behind it.
 
-Deterministic (always enforced):
+Applied to the example above: `14%` never resolves to a cited value and is
+rejected; the causal clause is bounced for citing evidence not marked causal;
+what survives is *"Sales declined 12.28% quarter over quarter"* — recomputed from
+114 and 100 — plus an explicit gap noting the cause is not established.
 
-- **G1** Every factual claim cites evidence that exists.
-- **G2** Every number in a claim matches cited evidence/calculations within tolerance.
-- **G3** Every calculation is recomputed before rendering.
-- **G4** Structured causal claims are rejected unless backed by evidence explicitly
-  marked causal; known causal phrasings in non-causal claims are lexically gated
-  (a tripwire against marker words, not semantic causality detection — novel
-  phrasings can pass; pair with Tier-2 for entailment-level coverage).
-- **G5** Every sentence has retrievable provenance (JSONL audit log).
+## What you get
 
-Not guaranteed: that your evidence is true; perfect entailment of free prose
-(Tier-2 is probabilistic and advisory by default); semantic detection of causal
-language beyond the marker list; domain-correct reasoning.
+Enforced by code paths with no model in them:
 
-v0.4.1 (production hardening): unknown policy values raise `ConfigError` at
-construction instead of falling through to the permissive branch (a typo in
-`tier2_policy` used to silently disable Tier-2); the evidence fence carries a
-per-prompt random nonce and tool text is stripped of fence-like tokens, so tool
-output can no longer terminate the evidence region or forge an evidence row;
-the evidence table is capped by `max_evidence_chars` with truncation reported
-in the table, the metrics and the proof; a model calc request always triggers a
-re-prompt so the requested C-id is actually citable; `record_hash` now covers
-the redacted record that was persisted; version metadata is single-sourced.
-Full list in [CHANGELOG.md](CHANGELOG.md); deployment guidance in
+| | Guarantee |
+|---|---|
+| **G1** | Every factual claim cites evidence that exists. |
+| **G2** | Every number in a claim matches cited evidence or a calculation, within tolerance. |
+| **G3** | Every calculation is recomputed before rendering. |
+| **G4** | Causal claims are rejected unless cited evidence is explicitly marked causal. |
+| **G5** | Every sentence has retrievable provenance. |
+
+## What you don't get
+
+Stated as plainly as the guarantees, because a verification tool that oversells
+itself is worse than none:
+
+- **True evidence.** Cited garbage is still garbage. ECP verifies the link
+  between answer and evidence, never the evidence itself.
+- **Semantic entailment of free prose.** That is Tier 2 — probabilistic,
+  pluggable, and advisory unless you configure it otherwise.
+- **Causal language detection beyond a marker list.** G4's lexical gate is a
+  tripwire for known phrasings (*because*, *due to*, *led to*…). Novel phrasing
+  passes it; pair with Tier 2 for real coverage.
+- **Domain-correct reasoning.** ECP governs grounding, not judgment — and not
+  framing or emphasis either.
+
+Version history lives in [CHANGELOG.md](CHANGELOG.md); deployment guidance in
 [PRODUCTION.md](PRODUCTION.md).
-
-v0.4 (second review round): every visible quantity must be BOUND to an
-asserted_value (grounding-by-coincidence is gone); a textual unit word next to
-a number must agree with the bound unit ("100 dollars" citing 100 units is
-rejected); scientific notation is rejected as unverifiable format; asserting a
-unit on a unitless source is rejected; calculation units are DERIVED IN CODE
-and never taken from the model; qualitative factual claims must cite text-kind
-evidence (a number cannot support "the company is insolvent"); Tier-2, when
-configured, runs on every factual claim type, and a failed entailment on a
-causal claim is never advisory. Verification levels are now honest to the
-check performed: entailed > numerically_grounded > causally_sourced >
-citation_resolved, plus interpretive. `PipelineConfig.production(audit_path=...)`
-is the fail-closed profile: enforce, deterministic render, mandatory audit,
-no model_output evidence — and without a Tier-2 backend, qualitative factual
-prose is DOWNGRADED to hedged inference rather than presented as verified.
-Audit records accept a pluggable sink and redactor for privacy-controlled
-durable storage. The corpus is 36 cases; the harness reports both the
-deterministic-scope confusion matrix and the full-corpus aggregate.
-examples/02_arm_comparison.py reproduces the comparison figure and saves the
-complete scoring record. Still honestly absent: a held-out, repeated,
-live-model end-to-end benchmark.
-
-v0.3 (first review round): Tier-1 numeric grounding now applies to EVERY claim type
-— inferences and recommendations may interpret, but any quantity they state
-must resolve to cited evidence. Units are mandatory when evidence declares one
-(omission is rejected, not tolerated). Percent tokens must ground against
-percent-united values. The small-integer exemption is removed (default
-ceiling 0); year tokens are exempt only in date context. Proof objects are
-audit-durable: full evidence and calculation snapshots, full SHA-256 hashes,
-per-record hash, and per-sentence `verification_level` stating exactly what
-"verified" established (`numerically_grounded` / `entailed` / `interpretive`
-— deterministic verification proves provenance and arithmetic, NOT semantic
-support; that is Tier-2). `audit_required=True` makes a failed audit write
-fail the run. `benchmark/harness.py` runs a labelled adversarial corpus
-(labels independent of the verifier) and reports precision, recall,
-false-accept and false-reject rates, with the Tier-2 residual published
-separately. Run state is per-run, not per-instance.
-
-Hardening (v0.2.1): direction-aware sign matching ("rose 12%" vs a −12%
-calc is rejected), unit consistency checks, digits-only quantity enforcement
-(spelled-out numbers rejected), contextual year exemption (bare 4-digit
-quantities are verified, only date-context years are exempt), fail-closed
-parsing of malformed claims, LLM retry with backoff (fail-closed after
-exhaustion, errors surfaced on `result.errors`), `result.metrics` for ops
-dashboards, locked JSONL audit appends, thread-safe ID allocation.
 
 ## Install
 
@@ -419,22 +433,26 @@ and decide your Tier-2 posture explicitly.
 
 ## Known limitations
 
-Evidence quality is out of scope (cited garbage is still garbage). Tier-1 numeric
-extraction misses word-form numbers ("a fifth"). Tier-2 entailment is probabilistic
-and no entailment model ships with the library — bring your own backend.
-Latency: +1–2 LLM calls vs a naive agent — right for reports, wrong for chat-speed UX.
-Dates are not verified: they cannot be bound to a numeric `asserted_value`, so
-they are exempted rather than checked — cite a date as text evidence and use
-Tier-2 if it is load-bearing.
-ECP governs grounding, not framing or emphasis. The JSONL audit log is not
-tamper-evident without external chaining, and is single-writer on Windows
-(no `fcntl`) — use `audit_sink` for multi-worker deployments. Evidence-fence
-hardening bounds prompt structure, not prompt content. There is still no
-held-out, repeated, live-model end-to-end benchmark. Running
-`examples/04_ecp_real_agent.py` produces `live_run_record.json`, a single
-reproducible transcript with measured latency and token cost — useful, but one
-run of one model, and not a benchmark. It is not checked in; generate it
-yourself.
+The conceptual boundaries are under [What you don't get](#what-you-dont-get).
+These are the operational ones:
+
+- **No entailment model ships.** Tier 2 is bring-your-own — an LLM judge or a
+  local NLI model. Without one, `PipelineConfig.production` downgrades
+  qualitative prose to hedged inference rather than presenting it as verified.
+- **Word-form numbers slip Tier-1 extraction.** "a fifth" is not a digit and is
+  not checked; spelled-out quantities are rejected outright instead.
+- **Dates are exempted, not verified.** They cannot bind to a numeric
+  `asserted_value` — cite a date as text evidence and use Tier 2 if it matters.
+- **Latency: +1–2 model calls** over a naive agent. Right for reports and
+  analyses, wrong for chat-speed UX.
+- **The JSONL audit log is not tamper-evident** without external chaining, and
+  is single-writer on Windows (no `fcntl`). Use `audit_sink` for multi-worker
+  deployments — see [PRODUCTION.md](PRODUCTION.md).
+- **Fence hardening bounds prompt structure, not content.** Tool output can no
+  longer forge an evidence row; it can still argue with the model.
+- **No end-to-end benchmark yet.** The corpus measures the verifier, not an
+  agent. `examples/04_ecp_real_agent.py` produces one live transcript with real
+  latency and token cost — useful, but one run of one model, and not checked in.
 
 ## License
 
