@@ -370,8 +370,8 @@ python benchmark/harness.py    # labelled corpus; fails on any in-scope miss
 ```
 
 Current corpus result: **22/22 in-scope bad claims** rejected, 0 false accepts,
-0 false rejects. That deterministic scope is **33 cases from** one synthetic
-evidence world, so treat it as a regression gate, not a generalization estimate.
+0 false rejects — drawn from 33 cases from one synthetic evidence world. Treat it
+as a regression gate, not a generalization estimate.
 
 | Metric | Result |
 |---|---:|
@@ -437,6 +437,20 @@ ECP is intentionally explicit about what it does not prove:
 - **Evidence truth.** If a tool returns garbage, ECP can still faithfully cite it.
 - **Semantic entailment without Tier 2.** Bring an entailment backend for strict prose support.
 - **Novel causal phrasing.** The deterministic causal gate catches known markers, not every possible phrasing.
+- **Labeled interpretation.** `inference`, `recommendation` and `gap` claims may carry
+  no citations at all. That is deliberate — they are the legal home for speculation,
+  and the proof marks them `interpretive` — but it means a final answer can contain
+  *"This suggests that…"* or *"Recommendation: …"* with no evidence behind it.
+  Verified facts and labeled interpretation are different things; treat them
+  differently downstream.
+- **Dates.** A date cannot bind to a numeric asserted value, so dates pass through
+  unchecked rather than verified. Cite one as text evidence and use Tier 2 if it is
+  load-bearing.
+- **Word-form numbers.** Digits are verified; *"a fifth"* is not a digit. Spelled-out
+  quantities are rejected outright rather than checked.
+- **Audit durability.** The JSONL log is not tamper-evident without external chaining,
+  and is single-writer on Windows. Use `audit_sink` for multi-worker deployments —
+  see [PRODUCTION.md](PRODUCTION.md).
 - **Domain judgment.** ECP checks grounding, arithmetic and provenance; it does not decide business correctness.
 - **Chat-speed latency.** Verification adds model calls and is best suited to reports, analyses and workflows where wrong claims have cost.
 
