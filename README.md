@@ -92,43 +92,152 @@ their results.
 
 ## How ECP Solves It
 
-ECP does not hand raw tool output to the final-answer model. It converts tool
-results into an evidence table:
+ECP sits between the tools and the final answer:
 
 ```text
-EVIDENCE
-E-001  [value]   2026Q1 revenue = 1240000 USD  (orders_db)
-E-002  [value]   2026Q2 revenue = 1088000 USD  (orders_db)
-E-003  [value]   2026Q2 shipping tickets = 900 tickets  (support_db)
-E-004  [causal]  Logistics incident: "A regional carrier strike disrupted outbound shipping through most of Q2 2026."  (market_intel causal:yes)
-
-CALCULATIONS
-C-001  [calc]    pct_change(E-001, E-002) = -12.258065 %
+Three tools
+    ↓
+Evidence Store
+    ↓
+LLM creates cited claims
+    ↓
+ECP verifies each claim
+    ↓
+Final answer + proof
 ```
 
-The model sees that evidence table and returns structured claims:
+### 3. ECP converts tool results into evidence
+
+```text
+E-001: Q1 sales = 114 products
+        source: sales database
+
+E-002: Q2 sales = 100 products
+        source: sales database
+
+E-003: Several customers mentioned pricing concerns
+        source: customer survey
+
+E-004: Forecast unavailable
+        source: forecast service
+```
+
+Each piece of information receives an evidence ID and source.
+
+The LLM no longer receives uncontrolled raw results. It receives this organized
+evidence table.
+
+### 4. Calculations are performed by code
+
+The LLM should not calculate the percentage itself. ECP calculates it:
+
+```text
+C-001 = percentage_change(E-001, E-002)
+      = (100 - 114) / 114 × 100
+      = -12.28%
+```
+
+Now 12.28% becomes a registered, recomputable calculation.
+
+### 5. The LLM produces cited claims
+
+Instead of writing unrestricted prose, the LLM produces structured claims:
 
 ```json
 {
   "claim_type": "comparison",
-  "text": "Revenue declined 12.26% from Q1 to Q2 2026.",
+  "text": "Sales declined 12.28% from Q1 to Q2.",
   "cites": ["C-001"],
-  "asserted_values": [{"value": -12.26, "unit": "%", "from": "C-001"}]
+  "asserted_values": [
+    {
+      "value": -12.28,
+      "unit": "%",
+      "from": "C-001"
+    }
+  ]
 }
 ```
 
-Then ECP verifies the claim before it can appear in the final answer:
+It can also create:
 
-1. **Structural check:** cited evidence IDs exist.
-2. **Value check:** visible numbers match cited values or calculations.
-3. **Calculation check:** cited calculations recompute correctly.
-4. **Causal check:** causal claims cite evidence marked `supports_causality`.
-5. **Repair loop:** rejected claims go back to the model with machine-readable reasons.
-6. **Render:** only verified or explicitly downgraded claims reach the answer.
+```json
+{
+  "claim_type": "observation",
+  "text": "Several customers mentioned pricing concerns.",
+  "cites": ["E-003"]
+}
+```
 
-If the model says `13.4%`, the claim fails because it does not match `C-001`.
-If it blames a cause that was not retrieved or not marked causal, the claim
-fails. The worst case is a shorter answer, not an unsupported one.
+Because the evidence does not prove the cause or future forecast, the model
+should produce a gap claim:
+
+```json
+{
+  "claim_type": "gap",
+  "text": "The evidence does not establish the cause of the decline or provide a future forecast.",
+  "cites": []
+}
+```
+
+### 6. ECP verifies every claim
+
+If the model tries to say:
+
+> "Sales declined 14%."
+
+ECP rejects it because 14% does not match calculation `C-001`.
+
+If the model says:
+
+> "Pricing concerns caused the decline."
+
+ECP rejects it as a factual causal claim because the survey evidence was not
+marked as causal evidence.
+
+If the model says:
+
+> "Sales will recover next quarter."
+
+ECP cannot find supporting forecast evidence, so the claim is rejected or
+converted into an explicit gap.
+
+### 7. ECP returns the final answer
+
+The final answer becomes:
+
+> "Q2 sales were 100 products, down from 114 in Q1 — a decline of 12.28%.
+> Several customers mentioned pricing concerns. The available evidence does not
+> establish the cause of the decline or provide a future forecast."
+
+It also returns a proof object (abbreviated):
+
+```json
+{
+  "sentences": [
+    {
+      "text": "Q2 sales were 100 products.",
+      "cites": ["E-002"]
+    },
+    {
+      "text": "Sales declined 12.28%.",
+      "cites": ["C-001"]
+    },
+    {
+      "text": "Several customers mentioned pricing concerns.",
+      "cites": ["E-003"]
+    }
+  ]
+}
+```
+
+The core idea is simple:
+
+> Tools collect facts. ECP converts those facts into evidence, makes the LLM
+> cite that evidence, checks the resulting claims, and only then produces the
+> final answer.
+
+ECP does not guarantee that the tools returned true information. It ensures that
+the agent's final answer does not silently go beyond the available evidence.
 
 ## Install
 
