@@ -821,6 +821,51 @@ def test_anthropic_adapter_defaults_are_current():
     assert p["model"].default == "claude-opus-5"
     assert p["max_tokens"].default >= 16000
 
+def test_readme_worked_example_behaves_as_documented():
+    """The README's front page walks one scenario end to end. If the verifier
+    ever stops behaving that way, the front page becomes a lie — so assert the
+    exact outcomes it promises."""
+    from ecp import EvidenceStore, CalcRegistry, Verifier
+    from ecp.claims import Claim, AssertedValue as AV
+    s = EvidenceStore()
+    q1 = s.add_value("2026Q1 revenue", 1240000, "USD", source_tool="orders_db")
+    q2 = s.add_value("2026Q2 revenue", 1088000, "USD", source_tool="orders_db")
+    strike = s.add_text("A regional carrier strike disrupted outbound shipping "
+                        "through most of Q2 2026.", label="Logistics incident",
+                        source_tool="market_intel", supports_causality=True)
+    memo = s.add_text("Competitors ran discounts in Q2.", label="Market memo",
+                      source_tool="market_intel")            # deliberately not causal
+    calcs = CalcRegistry(s)
+    pc = calcs.register("pct_change", [q1.evidence_id, q2.evidence_id])
+    v = Verifier(s, calcs)
+
+    assert round(pc.result, 2) == -12.26, "README quotes -12.26%"
+
+    # the claim the README shows as the verified output
+    ok = Claim("S", "comparison", "Revenue declined 12.26% from Q1 to Q2 2026.",
+               cites=[pc.calc_id], asserted_values=[AV(-12.26, "%", pc.calc_id)])
+    assert v.verify(ok).status == "verified"
+
+    # the 7B model's real 13.4% — rejected whether or not it is declared
+    bare = Claim("S", "comparison", "Revenue declined 13.4% from Q1 to Q2 2026.",
+                 cites=[pc.calc_id])
+    declared = Claim("S", "comparison", "Revenue declined 13.4% from Q1 to Q2 2026.",
+                     cites=[pc.calc_id], asserted_values=[AV(-13.4, "%", pc.calc_id)])
+    assert v.verify(bare).status == "rejected"
+    assert v.verify(declared).status == "rejected"
+
+    # causality: provenance decides, not phrasing — and the README names both reasons
+    good = Claim("S", "causal", "The carrier strike reduced Q2 revenue.",
+                 cites=[strike.evidence_id], causal=True)
+    assert v.verify(good).status == "verified"
+    gated = v.verify(Claim("S", "causal", "Competitor discounts reduced Q2 revenue.",
+                           cites=[memo.evidence_id], causal=True))
+    assert gated.status == "rejected" and "supports_causality" in gated.tier_results[-1].reason
+    numeric = v.verify(Claim("S", "causal", "Competitor discounts reduced Q2 revenue.",
+                             cites=[q2.evidence_id], causal=True))
+    assert numeric.status == "rejected"
+    assert "only numeric evidence" in numeric.tier_results[-1].reason
+
 def test_readme_numbers_match_reality():
     """Docs drift is a launch blocker, so let CI find it instead of a reviewer.
 

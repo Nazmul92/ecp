@@ -11,18 +11,42 @@ Stdlib-only, no dependencies, works with any model and any agent framework.
 
 ## The problem
 
-Tool calling is solved. Answer generation is not.
+**Step 1 — the agent calls its tools.** Four calls, each returning plain JSON.
 
-Your agent queries the sales database and gets back `q1: 114, q2: 100`. Both
-numbers are real. Then the model turns them into prose — and somewhere in that
-step `-12.28%` becomes "down roughly 14%", and "sales fell" quietly acquires a
-"because customers moved to competitors" that no tool ever returned.
+```jsonc
+query_orders("2026Q1")  → {"revenue_usd": 1240000, "units": 8200}
+query_orders("2026Q2")  → {"revenue_usd": 1088000, "units": 7100}
+query_support("2026Q2") → {"billing": 138, "shipping": 900, "quality": 61}
+market_notes("2026H1")  → [{"text": "A regional carrier strike disrupted outbound
+                                     shipping through most of Q2 2026.",
+                            "confirmed_causal": true}]
+```
 
-The retrieval was correct. The answer is not. Nothing in the stack noticed.
+Every value here is correct. This is the part the industry has solved — function
+calling, MCP, structured outputs, schema validation, retries. It works.
 
-That last step is the least defended part of a modern agent. Better retrieval,
-better tool design and better prompts all improve the **input** to answer
-generation. None of them check the **output**.
+**Step 2 — the agent asks a model to write the answer.** That JSON gets pasted
+into a prompt, and one unconstrained generation turns four blobs of data into
+prose. Here is what a 7B model actually returned in
+[examples/04_ecp_real_agent.py](examples/04_ecp_real_agent.py):
+
+> "The revenue decreased by approximately **13.4%** from Q1 to Q2 2026, with the
+> decrease potentially being due to a regional carrier strike that disrupted
+> outbound shipping during most of Q2 2026 (confirmed logistics incident)."
+
+The real figure is **−12.26%**. No tool returned 13.4%. No arithmetic produced
+it. The model estimated a percentage from two large numbers instead of computing
+one, and wrote the estimate with the same confidence as everything else.
+
+Notice what makes it dangerous: the sentence is *mostly right*. The direction is
+right, the cause is real and genuinely marked causal in the source data, the
+tone is measured. One number is invented, sitting inside an otherwise accurate
+sentence — which is exactly the kind of error that survives review, gets pasted
+into a board deck, and cannot be traced back afterwards.
+
+That step is the least defended part of a modern agent. Better retrieval, better
+tool design and better prompts all improve the **input** to it. None of them
+check the **output**.
 
 ## Why the usual answers don't close it
 
@@ -33,19 +57,51 @@ generation. None of them check the **output**.
 | Have a second model check the first | Probabilistic checking of a probabilistic process. It catches some errors, explains none of them, and leaves nothing an auditor can read. |
 | MCP | MCP gets data *into* your agent. It says nothing about what the model does with that data afterwards. |
 
-Each of these is worth doing. None of them can tell you, afterwards, whether a
+Each of these is worth doing. None can tell you, afterwards, whether one
 specific sentence was supported.
 
 ## How ECP closes it
 
-One architectural rule does most of the work:
+ECP does not hand the model raw JSON. It converts tool output into an **evidence
+table** — every fact given an ID, a label, a unit and a source — and computes
+derived values in code before the model ever runs:
 
-> **The synthesis model never sees raw tool output.** It sees an evidence table,
-> and the only thing it may produce is claims that cite that table.
+```
+EVIDENCE
+E-001  [value]   2026Q1 revenue = 1240000 USD  (orders_db)
+E-002  [value]   2026Q2 revenue = 1088000 USD  (orders_db)
+E-003  [value]   2026Q2 shipping tickets = 900 tickets  (support_db)
+E-004  [causal]  Logistics incident: "A regional carrier strike disrupted
+                 outbound shipping through most of Q2 2026."  (market_intel causal:yes)
 
-If a fact isn't in the store, the model cannot cite it — and an uncited factual
-claim does not survive verification. Deterministic code owns the loop; the model
-is a constrained subroutine invoked at exactly two points.
+CALCULATIONS
+C-001  [calc]    pct_change(E-001, E-002) = -12.258065 %
+```
+
+The model sees **only this table** — never the raw tool output — and the only
+thing it may return is claims that cite it:
+
+```json
+{"claim_type": "comparison",
+ "text": "Revenue declined 12.26% from Q1 to Q2 2026.",
+ "cites": ["C-001"],
+ "asserted_values": [{"value": -12.26, "unit": "%", "from": "C-001"}]}
+```
+
+Now "13.4%" stops being a stylistic risk and becomes a **failed check**: the
+asserted value doesn't match `C-001`, so the claim is rejected and sent back with
+the reason. The model cannot reach a number no evidence produced, because the
+only numbers it can cite are ones that already exist.
+
+Causality works the same way. Blaming the carrier strike passes, because `E-004`
+carries `causal:yes`. Blaming competitor discounts is rejected — either at the
+causal gate (`causal claim without evidence marked supports_causality`) if it
+cites a market memo nobody marked causal, or at Tier 1 (`qualitative claim cites
+only numeric evidence`) if it points at a revenue figure and calls it a cause.
+The difference is not tone or hedging; it is provenance.
+
+Six stages, with deterministic code owning the loop and the model called at
+exactly two points:
 
 ```
 tool results → EvidenceStore → CalcRegistry → structured claims
@@ -57,20 +113,15 @@ tool results → EvidenceStore → CalcRegistry → structured claims
 2. **Compute.** The model never does arithmetic. It *requests* a calculation;
    code executes it, and the result becomes citable evidence that is recomputed
    before the answer ships.
-3. **Synthesize.** The model returns structured claims — text plus citations
-   plus the specific values it asserts — not prose.
+3. **Synthesize.** The model returns structured claims — text plus citations plus
+   the specific values it asserts — not prose.
 4. **Verify.** Tiered checks. Tiers 0 and 1 and the causal gate are pure code
    with no model in them.
 5. **Repair.** Rejected claims go back with machine-generated hints while passing
-   claims stay frozen. This is fail-closed: the worst case is a shorter, blunter
-   answer, never a fabricated one.
+   claims stay frozen. Fail-closed: the worst case is a shorter, blunter answer,
+   never a fabricated one.
 6. **Render and prove.** The answer ships with a proof object mapping every
    sentence to the evidence behind it.
-
-Applied to the example above: `14%` never resolves to a cited value and is
-rejected; the causal clause is bounced for citing evidence not marked causal;
-what survives is *"Sales declined 12.28% quarter over quarter"* — recomputed from
-114 and 100 — plus an explicit gap noting the cause is not established.
 
 ## What you get
 
@@ -356,7 +407,7 @@ This is how linters and type checkers got adopted. Do the same.
 ## Tests & benchmark
 
 ```
-python tests/test_ecp.py       # 80 adversarial + hardening cases
+python tests/test_ecp.py       # 81 adversarial + hardening cases
 python benchmark/harness.py    # labelled corpus; exits non-zero on any in-scope miss
 ```
 

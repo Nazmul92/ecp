@@ -281,7 +281,7 @@ across all claim types, strict unit/percent grounding and value binding, repair
 loop, deterministic + polished rendering, observe mode, durable audit records
 (evidence + calc snapshots, full SHA-256 hashes, per-record hash over the
 persisted redacted record, fail-closed audit_required mode), per-sentence
-verification levels, labelled 36-case benchmark harness, adapters, 80-case
+verification levels, labelled 36-case benchmark harness, adapters, 81-case
 adversarial + hardening test suite. Production hardening: validated policy
 enums, nonced/sanitized evidence fence, configurable evidence budget,
 calc-request re-prompt, `ecp.tier2` reference backends, CI gate, MIT license,
