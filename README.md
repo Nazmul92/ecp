@@ -31,35 +31,64 @@ works with any `(prompt: str) -> str` model callable and any agent framework.
 
 ## The Problem
 
-Modern agents are good at calling tools. A planner chooses the calls, tools
-return structured JSON, and the framework gives the model data like this:
+Modern agents are good at calling tools. A planner picks the calls, and here
+three tools each return correct, structured JSON:
 
 ```jsonc
+// 1. orders database
 query_orders("2026Q1")  -> {"revenue_usd": 1240000, "units": 8200}
 query_orders("2026Q2")  -> {"revenue_usd": 1088000, "units": 7100}
+
+// 2. support ticket system
 query_support("2026Q2") -> {"billing": 138, "shipping": 900, "quality": 61}
+
+// 3. market intelligence
 market_notes("2026H1")  -> [{"text": "A regional carrier strike disrupted outbound shipping through most of Q2 2026.",
                              "confirmed_causal": true}]
 ```
 
-Those tool results can be perfectly correct. The weak point is the next step:
-the agent asks an LLM to turn raw tool JSON into the final answer.
+Every value is correct. Tool calling is the part the industry has solved —
+function calling, MCP, schema validation, retries.
 
-In [examples/04_ecp_real_agent.py](examples/04_ecp_real_agent.py), a local 7B
-model returned:
+**Then the agent pastes that JSON into a prompt and asks a model to write the
+answer.** This is the actual synthesis prompt from
+[examples/04_ecp_real_agent.py](examples/04_ecp_real_agent.py):
+
+```text
+You are an analytics assistant. Using ONLY the tool results below,
+answer the question in 3-4 sentences. Include the percent change in revenue.
+
+QUESTION: Did revenue change from Q1 to Q2 2026, and what might explain it?
+TOOL RESULTS:
+  [ ... the JSON above ... ]
+```
+
+One unconstrained generation over raw numbers. A local 7B model returned:
 
 > The revenue decreased by approximately **13.4%** from Q1 to Q2 2026, with the
 > decrease potentially being due to a regional carrier strike that disrupted
 > outbound shipping during most of Q2 2026 (confirmed logistics incident).
 
-The real figure is **-12.26%**. No tool returned `13.4%`. No calculation
-produced it. The model estimated a percentage from two large numbers, then put
-that invented value inside an otherwise plausible sentence.
+Held against the evidence, fragment by fragment:
 
-That is the dangerous class of agent error: **mostly-right prose with one
-unsupported claim inside it**. Better prompts, tool schemas, MCP, structured
-outputs and retries improve what goes into the model. They do not
-deterministically check what comes out of final-answer synthesis.
+| Fragment | Supported? |
+|---|---|
+| "The revenue decreased…" | Yes — 1240000 → 1088000 |
+| "…by approximately **13.4%**" | **No.** The real figure is **-12.26%**. No tool returned 13.4%; no calculation produced it. |
+| "…due to a regional carrier strike…" | Yes — `market_notes`, `confirmed_causal: true` |
+
+The model never computed the percentage. It estimated one from two large numbers
+and wrote the estimate in the same measured tone as the two parts it got right.
+
+Note what the prompt already said: *"Using ONLY the tool results below."* The
+instruction was there and the model followed it everywhere except the one place
+it mattered. That is why this is not a prompting problem — better prompts, tool
+schemas, MCP, structured outputs and retries all improve what goes **into** the
+model. None of them deterministically check what comes **out**.
+
+The result is the dangerous class of agent error: mostly-right prose with one
+unsupported claim inside it. It reads well, survives review, and cannot be traced
+back afterwards.
 
 ## How ECP Solves It
 
