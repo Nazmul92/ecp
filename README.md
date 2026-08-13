@@ -39,15 +39,30 @@ The agent calls three tools.
 
 ### 1. Three tools return correct data
 
-```jsonc
-// Tool 1 — Sales database
-{"q1_sales": 114, "q2_sales": 100, "unit": "products"}
+**Tool 1 — Sales database**
 
-// Tool 2 — Customer survey
-{"finding": "Several customers mentioned pricing concerns."}
+```json
+{
+  "q1_sales": 114,
+  "q2_sales": 100,
+  "unit": "products"
+}
+```
 
-// Tool 3 — Forecast service
-{"forecast_available": false}
+**Tool 2 — Customer survey**
+
+```json
+{
+  "finding": "Several customers mentioned pricing concerns."
+}
+```
+
+**Tool 3 — Forecast service**
+
+```json
+{
+  "forecast_available": false
+}
 ```
 
 All three tools worked correctly.
